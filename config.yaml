@@ -1,0 +1,39 @@
+simulation:
+  name: "Building_Wind_Sim_multichannel" # 模擬名稱
+
+  # --- 物理換算核心 ---
+  # 真實空氣 niu ≈ 1.5e-5 m^2/s。
+  # 在 LBM 中，為了數值穩定 (tau > 0.5)，niu 建議在 0.005 ~ 0.05 之間。
+  # 這裡設定 0.01 是為了在 Re 數與穩定性之間取得平衡。
+  niu: 0.03 # LBM 無因次黏滯係數，影響模擬的穩定性與湍流度
+
+  # 空間尺度縮放 (重要：決定每個 Pixel 代表的物理距離)
+  # 若單位是 0.1m，則 100px 代表 10 公尺長的建築。
+  unit: 0.1 # 單位：m/pixel (每個像素代表 0.1 公尺)
+  bc_mode: "no_bound" # 可選: "wind_tunnel" (牆壁) 或 "no_bound" (自由流出)
+  # --- 執行與儲存設定 ---
+  steps_per_batch: 100 # 每 100 步刷新一次 GUI，提升批次處理效率
+  save_npy: true # 是否儲存原始數據陣列
+  save_png: true # 建築模擬建議儲存圖片以利視覺化分析
+  stop_Tc_count: 3 # 特徵時間：建議增加到 5 以確保建築後方的渦流完全展開
+  silent_mode: false # 是否開啟靜默模式
+  save_step: 100 # 每 100 步存檔一次，對應物理時間約為 (100 * dt) 秒
+  clear_output_before_run: true # 是否在每次執行前清空輸出資料夾
+
+boundaries:
+  # 邊界類型：0=速度入口 (Velocity Inlet), 1=壓力出口 (Outflow)
+  types: [0, 0, 1, 0] # 左側流入，右側流出，上下為滑移或無滑移邊界
+
+  # 風速設定 (單位：m/s)
+  # 在 LBM 內部，格子速度建議保持在 0.1 左右以符合不可壓縮假設。
+  # 此處的數值 [0.1, 0.0] 代表主流風速為 0.1 (LBM 單位)。
+  # 若 unit=0.1 且 niu=0.01，這相當於模擬約 Re = 500~2000 的建築繞流。
+  values:
+    - [0.02, 0.0] # 入口風速 (LBM 速度，實際物理風速需經由 Re 換算)
+    - [0.0, 0.0] # 上邊界
+    - [0.0, 0.0] # 下邊界
+    - [0.0, 0.0] # 出口參考值
+
+obstacle:
+  use_mask: true # 啟用 PNG 遮罩圖形
+  mask_dir: "output/masks" # 讀取建築平面或剖面 Mask 的路徑
