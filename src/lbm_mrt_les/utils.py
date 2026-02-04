@@ -17,17 +17,6 @@ def load_config(path="config.yaml"):
         sys.exit(1)
 
 
-def create_cylinder_mask(nx, ny, cx, cy, r):
-    """產生圓柱障礙物遮罩 (Mask)"""
-    # 建立網格座標矩陣
-    y, x = np.meshgrid(np.arange(ny), np.arange(nx))
-    # 計算每個點到圓心的距離平方
-    dist_sq = (x - cx) ** 2 + (y - cy) ** 2
-    # 產生 Mask (圓內為 1, 圓外為 0)
-    mask = np.where(dist_sq <= r**2, 1.0, 0.0)
-    return mask
-
-
 def print_reynolds_info(u_char, l_char, nu, shape_name="Characteristic Length"):
     """
     計算並列印雷諾數資訊
@@ -58,7 +47,18 @@ def plot_mask(mask):
     plt.show()
 
 
-def create_two_rooms_mask(nx, ny, shift_left=200):
+def _create_cylinder_mask(nx, ny, cx, cy, r):
+    """產生圓柱障礙物遮罩 (Mask)"""
+    # 建立網格座標矩陣
+    y, x = np.meshgrid(np.arange(ny), np.arange(nx))
+    # 計算每個點到圓心的距離平方
+    dist_sq = (x - cx) ** 2 + (y - cy) ** 2
+    # 產生 Mask (圓內為 1, 圓外為 0)
+    mask = np.where(dist_sq <= r**2, 1.0, 0.0)
+    return mask
+
+
+def _create_two_rooms_mask(nx, ny, shift_left=200):
     mask = np.zeros((nx, ny))
 
     # --- 參數設定 ---
@@ -112,5 +112,24 @@ def create_two_rooms_mask(nx, ny, shift_left=200):
                 and (y_start <= j < y_end)
             ):
                 mask[i, j] = 1.0
+
+    return mask
+
+
+def create_mask(config):
+    mask_cfg = config.get("mask", {})
+    mask = None
+    nx = config["simulation"]["nx"]
+    ny = config["simulation"]["ny"]
+    if mask_cfg.get("enable"):
+        m_type = mask_cfg["type"]
+        print(f"Generating Mask: {m_type}")
+
+        # --- 3. 更新：Mask 生成邏輯分支 ---
+        if m_type == "cylinder":
+            p = mask_cfg["params"]
+            mask = _create_cylinder_mask(nx, ny, p["cx"], p["cy"], p["r"])
+        elif m_type == "room":  # 新增 room 判斷
+            mask = _create_two_rooms_mask(nx, ny)
 
     return mask

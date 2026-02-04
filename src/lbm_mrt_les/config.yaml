@@ -55,3 +55,6 @@ mask:
     cx: 320.0
     cy: 200.0
     r: 40.0
+
+foler_paths:
+  output: "src/lbm_mrt_les/output/"
