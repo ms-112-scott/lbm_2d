@@ -1,0 +1,37 @@
+simulation:
+  name: "DFG_Benchmark_Re100"
+  nx: 1200 # 稍微拉長以減少出口影響
+  ny: 300 # 基準高度
+
+  # D = 300 / 4.1 = 73.17 -> 取 73
+  # U_max = 0.05
+  # U_mean = 0.03333
+  # Re = 100
+  # niu = (0.03333 * 73) / 100 = 0.02433
+  niu: 0.02433
+
+  smagorinsky_constant: 0.0 # Re=100 不需要 LES，關掉以排除干擾
+  ghost_moments_s: 1.0 # 標準 LBM
+
+boundary_condition:
+  # 注意：DFG 必須用 No-Slip Wall (0)
+  type: [0, 0, 1, 0]
+
+  # 請在 Python 端攔截 type=0 的入口，強制覆寫為拋物線
+  value:
+    - [0.05, 0.0] # 這是 U_max
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+    - [0.0, 0.0]
+
+mask:
+  enable: true
+  type: "cylinder"
+  params:
+    cx: 150.0 # 入口長度約 2D
+    cy: 140.0 # 稍微偏心 (正中心是 150)
+    r: 36.5 # 直徑 73 => 半徑 36.5
+foler_paths:
+  output: "src/lbm_mrt_les/output/DFGBenchmark2D-1/"
+display:
+  max_size: 960

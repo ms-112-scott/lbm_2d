@@ -92,6 +92,9 @@ class LBM2D_MRT_LES:
         # 統計與計數
         self.frame_count = ti.field(dtype=ti.i32, shape=())
 
+        # 用於儲存障礙物受力的累加器 (0D Field)
+        self.force_sum = ti.Vector.field(2, dtype=ti.f32, shape=())
+
     #  init 子函式: 常數與矩陣 (Constants)
     def _init_constants(self):
         # D2Q9 權重
@@ -311,10 +314,17 @@ class LBM2D_MRT_LES:
     @ti.func
     def apply_bc_core(self, outer, dr, ibc, jbc, inb, jnb, ramp: float):
         if outer == 1:
-            if self.bc_type[dr] == 0:  # Dirichlet (Fixed Velocity, e.g., Inlet)
-                self.vel[ibc, jbc] = self.bc_value[dr] * ramp
+            if self.bc_type[dr] == 0:  # Dirichlet (Fixed Velocity)
+                # [修正重點] DFG 驗證專用：如果是左側入口 (ibc == 0)，強制使用拋物線
+                if ibc == 0:
+                    u_max = self.bc_value[dr][0]  # 取設定檔中的 X 分量作為最大速度
+                    u_parabolic = self.get_parabolic_inlet_velocity(jbc, u_max, self.ny)
+                    self.vel[ibc, jbc] = tm.vec2(u_parabolic, 0.0) * ramp
+                else:
+                    # 其他固壁 (上下) 維持 0 速度
+                    self.vel[ibc, jbc] = self.bc_value[dr] * ramp
 
-            elif self.bc_type[dr] == 1:  # Neumann (Outlet / Zero Gradient)
+            elif self.bc_type[dr] == 1:  # Neumann (Outlet)
                 self.vel[ibc, jbc] = self.vel[inb, jnb]
 
             elif self.bc_type[dr] == 2:  # Free-Slip (Symmetry / Specular)
@@ -380,6 +390,79 @@ class LBM2D_MRT_LES:
             # 3. 應用邊界條件 (Inlet/Outlet) 與 障礙物 (Mask)
             # 這會覆蓋邊界上的 vel 和 rho，確保物理場正確
             self.apply_bc()
+
+    # endregion
+    # ------------------------------------------------
+
+    # ------------------------------------------------
+    # region DFG 驗證專用函式
+    @ti.func
+    def get_parabolic_inlet_velocity(self, j: int, u_max: float, ny: int) -> float:
+        # y 座標 (0 到 ny-1)
+        y = float(j)
+        h = float(ny - 1)
+        # 拋物線公式
+        return 4.0 * u_max * y * (h - y) / (h * h)
+
+    @ti.kernel
+    def compute_force_on_obstacle(self):
+        # 1. 歸零累加器
+        self.force_sum[None] = tm.vec2(0.0, 0.0)
+
+        # [終極解法] 整合查表法 (Lookup Table)
+        # 我們將所有需要的資訊打包在一起，只用 k (靜態整數) 來索引
+        # 格式: (鄰居方向X, 鄰居方向Y, 反向索引ID, 受力方向X, 受力方向Y)
+        # 受力方向其實就是鄰居方向的相反 (-x, -y)
+        lookup_data = (
+            (0, 0, 0, 0, 0),  # k=0
+            (1, 0, 3, -1, 0),  # k=1 (E)  -> inv=3 (W)  -> Force=(-1, 0)
+            (0, 1, 4, 0, -1),  # k=2 (N)  -> inv=4 (S)  -> Force=(0, -1)
+            (-1, 0, 1, 1, 0),  # k=3 (W)  -> inv=1 (E)  -> Force=(1, 0)
+            (0, -1, 2, 0, 1),  # k=4 (S)  -> inv=2 (N)  -> Force=(0, 1)
+            (1, 1, 7, -1, -1),  # k=5 (NE) -> inv=7 (SW) -> Force=(-1, -1)
+            (-1, 1, 8, 1, -1),  # k=6 (NW) -> inv=8 (SE) -> Force=(1, -1)
+            (-1, -1, 5, 1, 1),  # k=7 (SW) -> inv=5 (NE) -> Force=(1, 1)
+            (1, -1, 6, -1, 1),  # k=8 (SE) -> inv=6 (NW) -> Force=(-1, 1)
+        )
+
+        # 遍歷整個場
+        for i, j in self.mask:
+            if self.mask[i, j] == 1:  # 固體
+
+                # 使用 ti.static 展開，確保 k 是純 Python 整數
+                for k in ti.static(range(9)):
+
+                    # [關鍵] 因為 k 是 static，這裡是在編譯期直接解包 Python Tuple
+                    # 完全不涉及 Taichi 運行時計算，絕對不會報錯
+                    vals = lookup_data[k]
+
+                    dir_x = vals[0]
+                    dir_y = vals[1]
+                    inv_k = vals[2]
+                    force_x = vals[3]
+                    force_y = vals[4]
+
+                    # 尋找鄰居
+                    ni = i + dir_x
+                    nj = j + dir_y
+
+                    # 邊界與流體檢查
+                    if ni >= 0 and ni < self.nx and nj >= 0 and nj < self.ny:
+                        if self.mask[ni, nj] == 0:
+
+                            # 讀取分布函數 (inv_k 這裡是整數，Taichi Field 接受整數或 Expr 索引，所以沒問題)
+                            f_val = self.f_new[ni, nj][inv_k]
+
+                            # 計算受力
+                            force_vec = tm.vec2(force_x, force_y)
+
+                            # 累加 (動量交換公式: 2 * f_in * c)
+                            self.force_sum[None] += 2.0 * f_val * force_vec
+
+    # Python 端呼叫用的 Helper
+    def get_force(self):
+        self.compute_force_on_obstacle()
+        return self.force_sum[None].to_numpy()
 
     # endregion
     # ------------------------------------------------
