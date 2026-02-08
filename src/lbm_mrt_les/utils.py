@@ -58,14 +58,30 @@ def _create_cylinder_mask(nx, ny, cx, cy, r):
     return mask
 
 
-def _create_two_rooms_mask(nx, ny, shift_left=200, angle_deg=20):
+def _create_rect_mask(nx, ny, cx, cy, r):
+    """
+    產生矩形障礙物遮罩 (Mask)
+    x0, y0: 矩形左上角 (或起始點) 座標
+    w, h: 矩形的寬度與高度
+    """
+    y, x = np.meshgrid(np.arange(ny), np.arange(nx))
+    # 判斷點是否在矩形範圍內： x0 <= x < x0+w 且 y0 <= y < y0+h
+    mask = np.where(
+        (x >= cx - r / 2) & (x < cx + r / 2) & (y >= cy - r / 2) & (y < cy + r / 2),
+        1.0,
+        0.0,
+    )
+    return mask
+
+
+def _create_two_rooms_mask(nx, ny, shift_left=50, angle_deg=20):
     mask = np.zeros((nx, ny))
 
     # --- 1. 原始參數設定 (保持不變) ---
     w = 6  # 牆壁厚度
-    d_half = 18  # 開口寬度的一半
-    marginLR = 600
-    marginTD = 280
+    d_half = 8  # 開口寬度的一半
+    marginLR = 350
+    marginTD = 100
 
     # 原始邊距計算
     x_start = marginLR - shift_left
@@ -145,15 +161,21 @@ def create_mask(config):
     mask = None
     nx = config["simulation"]["nx"]
     ny = config["simulation"]["ny"]
+
     if mask_cfg.get("enable"):
         m_type = mask_cfg["type"]
         print(f"Generating Mask: {m_type}")
 
-        # --- 3. 更新：Mask 生成邏輯分支 ---
+        # --- 更新：Mask 生成邏輯分支 ---
         if m_type == "cylinder":
             p = mask_cfg["params"]
             mask = _create_cylinder_mask(nx, ny, p["cx"], p["cy"], p["r"])
-        elif m_type == "room":  # 新增 room 判斷
+
+        elif m_type == "rect":  # 新增 rect 判斷
+            p = mask_cfg["params"]
+            mask = _create_rect_mask(nx, ny, p["cx"], p["cy"], p["r"])
+
+        elif m_type == "room":
             mask = _create_two_rooms_mask(nx, ny)
 
     return mask

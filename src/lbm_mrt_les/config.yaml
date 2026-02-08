@@ -7,23 +7,23 @@ simulation:
   name: "Room Jet Flow (LES)"
 
   # --- 網格解析度 ---
-  nx: 1600
-  ny: 800
+  nx: 3200
+  ny: 1600
 
   # --- 物理與穩定性參數 ---
   # niu: 黏滯係數 (建議 0.0005 ~ 0.02)。越小 Re 越高，但易不穩定。
-  niu: 0.002
+  niu: 0.0006
 
   # LES (大渦模擬) 參數
-  smagorinsky_constant: 0.15
+  smagorinsky_constant: 0.35
 
   # MRT 碰撞模型鬆弛參數 (1.0~1.95, 1.8 為穩定推薦值)
-  ghost_moments_s: 1.4
+  ghost_moments_s: 1.15
 
   # --- 視覺化與輸出 ---
   steps_per_frame: 100 # 每幾步計算更新一次畫面
-  visualization_gaussian_sigma: 1.4 # 速度場模糊化程度 (視覺用)
-  warmup_steps: 3000 # 預熱步數 (不輸出畫面)
+  visualization_gaussian_sigma: 1.1 # 速度場模糊化程度 (視覺用)
+  warmup_steps: 2000 # 預熱步數 (不輸出畫面)
 # ==========================================
 # 邊界條件 (Boundary Conditions)
 # ==========================================
@@ -34,30 +34,30 @@ boundary_condition:
 
   # 速度向量: [Ux, Uy] (注意: 絕對值需 < 0.1)
   value:
-    - [0.04, 0.0] # 左 (Inlet): 向右吹風
+    - [0.07, 0.0] # 左 (Inlet): 向右吹風
     - [0.0, 0.0] # 上 (Wall)
     - [0.0, 0.0] # 右 (Outlet): 數值無效 (由內部決定)
     - [0.0, 0.0] # 下 (Wall)
 
   # 特徵長度 (Characteristic Length)
   # 用於計算 Re 顯示。此處設為 36 (房間開口寬度)
-  CL: 36.0
+  CL: 80.0
 
 # ==========================================
 # 障礙物遮罩 (Mask)
 # ==========================================
 mask:
   enable: true
-  type: "room" # 類型: "room" (雙房間) 或 "cylinder" (圓柱)
+  type: "rect" # 類型: "room" (雙房間) 或 "cylinder" (圓柱)
 
   # 僅在 type: "cylinder" 時生效，"room" 模式會忽略以下參數
   params:
-    cx: 320.0
-    cy: 200.0
-    r: 40.0
+    cx: 400.0
+    cy: 800.0
+    r: 80.0
 
 foler_paths:
   output: "src/lbm_mrt_les/output/"
 
 display:
-  max_size: 1024
+  max_size: 960
